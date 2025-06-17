@@ -1,4 +1,4 @@
-image: "cuaesd/aesd-dind"
+image: "cuaesd/aesd-autotest"
 
 # See https://docs.gitlab.com/ee/ci/docker/using_docker_build.html#tls-enabled
 services:
