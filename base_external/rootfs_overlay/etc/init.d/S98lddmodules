@@ -1,0 +1,173 @@
+#!/bin/sh
+
+base_dir=$(dirname $0)
+
+mode="664"
+
+function load_scull() {
+
+	local module
+	local device
+	module="scull"
+	device="scull"
+
+	# Group: since distributions do it differently, look for wheel or use staff
+	if grep -q '^staff:' /etc/group; then
+			group="staff"
+	else
+			group="wheel"
+	fi
+
+	# invoke insmod with all arguments we got
+	# and use a pathname, as insmod doesn't look in . by default
+	modprobe $module || exit 1
+
+	# retrieve major number
+	major=$(awk "\$2==\"$module\" {print \$1}" /proc/devices)
+
+	# Remove stale nodes and replace them, then give gid and perms
+	# Usually the script is shorter, it's scull that has several devices in it.
+
+	rm -f /dev/${device}[0-3]
+	mknod /dev/${device}0 c $major 0
+	mknod /dev/${device}1 c $major 1
+	mknod /dev/${device}2 c $major 2
+	mknod /dev/${device}3 c $major 3
+	ln -sf ${device}0 /dev/${device}
+	chgrp $group /dev/${device}[0-3] 
+	chmod $mode  /dev/${device}[0-3]
+
+	rm -f /dev/${device}pipe[0-3]
+	mknod /dev/${device}pipe0 c $major 4
+	mknod /dev/${device}pipe1 c $major 5
+	mknod /dev/${device}pipe2 c $major 6
+	mknod /dev/${device}pipe3 c $major 7
+	ln -sf ${device}pipe0 /dev/${device}pipe
+	chgrp $group /dev/${device}pipe[0-3] 
+	chmod $mode  /dev/${device}pipe[0-3]
+
+	rm -f /dev/${device}single
+	mknod /dev/${device}single  c $major 8
+	chgrp $group /dev/${device}single
+	chmod $mode  /dev/${device}single
+
+	rm -f /dev/${device}uid
+	mknod /dev/${device}uid   c $major 9
+	chgrp $group /dev/${device}uid
+	chmod $mode  /dev/${device}uid
+
+	rm -f /dev/${device}wuid
+	mknod /dev/${device}wuid  c $major 10
+	chgrp $group /dev/${device}wuid
+	chmod $mode  /dev/${device}wuid
+
+	rm -f /dev/${device}priv
+	mknod /dev/${device}priv  c $major 11
+	chgrp $group /dev/${device}priv
+	chmod $mode  /dev/${device}priv
+}
+
+function unload_scull() {
+	local module
+	local device
+	module="scull"
+	device="scull"
+	# invoke rmmod with all arguments we got
+	rmmod $module $* || exit 1
+
+	# Remove stale nodes
+	rm -f /dev/${device} /dev/${device}[0-3] 
+	rm -f /dev/${device}priv
+	rm -f /dev/${device}pipe /dev/${device}pipe[0-3]
+	rm -f /dev/${device}single
+	rm -f /dev/${device}uid
+	rm -f /dev/${device}wuid
+}
+
+function load() {
+	local module
+	local device
+
+	module=$1
+	device=$1
+
+	if [ $# -ne 1 ]; then
+		echo "Wrong number of arguments"
+		echo "usage: $0 module_name"
+		echo "Will create a corresponding device /dev/module_name associated with module_name.ko"
+		exit 1
+	fi
+
+	# Group: since distributions do it differently, look for wheel or use staff
+	# These are groups which correspond to system administrator accounts
+	if grep -q '^staff:' /etc/group; then
+			group="staff"
+	else
+			group="wheel"
+	fi
+
+	echo "Load our module $module, exit on failure"
+	modprobe $module || exit 1
+	echo "Get the major number (allocated with allocate_chrdev_region) from /proc/devices"
+	major=$(awk "\$2==\"$module\" {print \$1}" /proc/devices)
+	if [ ! -z ${major} ]; then
+			echo "Remove any existing /dev node for /dev/${device}"
+			rm -f /dev/${device}
+			echo "Add a node for our device at /dev/${device} using mknod"
+			mknod /dev/${device} c $major 0
+			echo "Change group owner to ${group}"
+			chgrp $group /dev/${device}
+			echo "Change access mode to ${mode}"
+			chmod $mode  /dev/${device}
+	else
+			echo "No device found in /proc/devices for driver ${module} (this driver may not allocate a device)"
+	fi
+}
+
+function unload() {
+	local module
+	local device
+	module=$1
+	device=$1
+
+	if [ $# -ne 1 ]; then
+		echo "Wrong number of arguments"
+		echo "usage: $0 module_name"
+		echo "Will unload the module specified by module_name and remove assocaited device"
+		exit 1
+	fi
+
+	# invoke rmmod with all arguments we got
+	rmmod $module || exit 1
+
+	# Remove stale nodes
+	rm -f /dev/${device}
+}
+
+##############################
+# Command line interface:
+##############################
+
+cmd=
+
+case "$1" in
+	start)
+		cmd=start
+		;;
+	stop)
+		cmd=stop
+		;;
+	*)
+		echo "Usage: $0 [start|stop]"
+		exit 1
+esac
+
+if [ "$cmd" = "start" ]; then
+	load_scull
+	load faulty
+	load hello
+elif [ "$cmd" = "stop" ]; then
+	unload hello
+	unload faulty
+	unload_scull
+fi
