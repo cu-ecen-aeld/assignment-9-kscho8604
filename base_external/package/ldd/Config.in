@@ -1,0 +1,4 @@
+config BR2_PACKAGE_LDD_ASSIGNMENTS
+	bool "aesd-ldd-assignments"
+	help
+	  Build LDD module driver. 
